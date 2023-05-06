@@ -45,7 +45,7 @@ function restartMysql(){
     if(isMysqlConnected){
         return
     }
-
+    con.end()
     console.log("Mysql restart")
     connectMysql()
 }
@@ -181,6 +181,7 @@ app.post("/account-detail", async (req, res) => {
         } else {
             res.status(200).json(account)
         }
+
     } catch (error) {
         console.log(error)
         isMysqlConnected = false
