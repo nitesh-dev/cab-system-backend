@@ -39,10 +39,6 @@ function connectMysql() {
 
 }
 
-function closeMysql() {
-    con.destroy()
-}
-
 
 
 // -------------------------------------------------------
@@ -59,57 +55,49 @@ function closeMysql() {
 
 
 
-app.get('/test', async (req, res) => {
-    if (isMysqlConnected) {
-        let isExist = await isDriverExist("niteshdr@gail.com")
-        console.log(isExist)
-    }
-    res.send(generateId().toString())
-})
-
-
-app.get("/addDriver", async (req, res) => {
-    if (isMysqlConnected) {
-        let result = await addDriver(generateId(), "rajesh kumar", "rajesh@gmail.com", "78958893214", "surav@123")
-        console.log(result)
-    }
-    res.send()
-})
-
-
 // ----------------------------- Common ------------------------
 app.post("/sign-up", async (req, res) => {
 
     try {
         let json = req.body
         console.log(json)
-        if (json.accountType == "customer") {
-            if (await isCustomerExist(json.email)) {
-                res.status(400).json({ error: "Account already exist with this gmail" })
-            } else {
-                let _accountId = await createCustomerAccount(json.name, json.email, json.number, json.password)
-                if (_accountId == 0) {
-                    res.status(400).json({ error: "Unable to create account, please try again!" })
-                } else {
-                    res.status(201).json({ accountId: _accountId, accountType: json.accountType })
-                }
-            }
 
+        let serverAccountType = null
+
+        if (await isCustomerExist(json.email)) {
+            serverAccountType = "Customer"
+        } else if (await isDriverExist(json.email)) {
+            serverAccountType = "Driver"
+
+        } else if (await isAdminExist(json.email)) {
+            serverAccountType = "Admin"
+        }
+
+        // check if account already exist with email
+        if (serverAccountType != null) {
+            res.status(400).json({ error: `${serverAccountType} account already exist with this email` })
+            return
+        }
+
+        // create account if not exist
+        let _accountId = 0
+        if (json.accountType == "customer") {
+            _accountId = await createCustomerAccount(json.name, json.email, json.number, json.password)
+            
         } else if (json.accountType == "driver") {
-            if (await isDriverExist(json.email)) {
-                res.status(400).json({ error: "Account already exist with this gmail" })
-            } else {
-                let _accountId = await createDriverAccount(json.name, json.email, json.number, json.password)
-                if (_accountId == 0) {
-                    res.status(400).json({ error: "Unable to create account, please try again!" })
-                } else {
-                    res.status(201).json({ accountId: _accountId, accountType: json.accountType })
-                }
-            }
+            _accountId = await createDriverAccount(json.name, json.email, json.number, json.password)
 
         } else {
             res.status(400).json({ error: 'Something went wrong!' })
+            return
         }
+
+        if (_accountId == 0) {
+            res.status(400).json({ error: "Unable to create account, please try again!" })
+        } else {
+            res.status(201).json({ accountId: _accountId, accountType: json.accountType })
+        }
+
     } catch (error) {
         console.log(error)
         connectMysql()
@@ -123,34 +111,30 @@ app.post("/sign-in", async (req, res) => {
     try {
         let json = req.body
         console.log(json)
+        let account = null
+        let accountType = ""
 
         if (await isCustomerExist(json.email)) {
-            let account = await getCustomerAccountId(json.email, json.password)
-            if (account == null) {
-                res.status(400).json({ error: 'Wrong password!' })
-            } else {
-                res.status(200).json({ accountId: account.cus_id, accountType: 'customer' })
-            }
+            account = await getCustomerAccountId(json.email, json.password)
+            accountType = "customer"
 
         } else if (await isDriverExist(json.email)) {
-            let account = await getDriverAccountId(json.email, json.password)
-            if (account == null) {
-                res.status(400).json({ error: 'Wrong password!' })
-            } else {
-                res.status(200).json({ accountId: account.driver_id, accountType: 'driver' })
-            }
+            account = await getDriverAccountId(json.email, json.password)
+            accountType = "driver"
 
         } else if (await isAdminExist(json.email)) {
-            console.log("hello")
-            let account = await getAdminAccountId(json.email, json.password)
-            if (account == null) {
-                res.status(400).json({ error: 'Wrong password!' })
-            } else {
-                res.status(200).json({ accountId: account.admin_id, accountType: 'admin' })
-            }
+            account = await getAdminAccountId(json.email, json.password)
+            accountType = "admin"
 
         } else {
-            res.status(400).json({ error: 'No account exist with this email' })
+            res.status(400).json({ error: 'No account exist with this email!' })
+            return
+        }
+
+        if (account == null) {
+            res.status(400).json({ error: 'Wrong password!' })
+        } else {
+            res.status(200).json({ accountId: account.account_id, accountType: accountType })
         }
     } catch (error) {
         console.log(error)
@@ -169,13 +153,13 @@ app.post("/account-detail", async (req, res) => {
 
         if (json.accountType == "customer") {
             account = await getCustomerAccount(json.accountId)
-    
+
         } else if (json.accountType == "driver") {
             account = await getDriverAccount(json.accountId)
-            
+
         } else if (json.accountType == "admin") {
             account = await getAdminAccount(json.accountId)
-        }else {
+        } else {
             res.status(400).json({ error: 'Something went wrong!' })
             return
         }
@@ -192,6 +176,106 @@ app.post("/account-detail", async (req, res) => {
 
     }
 })
+
+app.post("/all-customers", async (req, res) => {
+    try {
+        let json = req.body
+        console.log(json)
+
+        let adminAccount = await getAdminAccount(json.accountId)
+        if (adminAccount == null) {
+            res.status(400).json({ error: 'Bad Request' })
+        } else {
+            let customerAccounts = await getAllCustomerAccount()
+            if (customerAccounts == null) {
+                res.status(400).json({ error: 'Unable to fetch account' })
+            } else {
+                res.status(200).json(customerAccounts)
+            }
+        }
+    } catch (error) {
+        console.log(error)
+        connectMysql()
+        res.status(400).json({ error: 'Something went wrong!' })
+    }
+})
+
+app.post("/all-drivers", async (req, res) => {
+    try {
+        let json = req.body
+        console.log(json)
+
+        let adminAccount = await getAdminAccount(json.accountId)
+        if (adminAccount == null) {
+            res.status(400).json({ error: 'Bad Request' })
+        } else {
+            let driverAccounts = await getAllDriverAccount()
+            if (driverAccounts == null) {
+                res.status(400).json({ error: 'Unable to fetch account' })
+            } else {
+                res.status(200).json(driverAccounts)
+            }
+        }
+    } catch (error) {
+        console.log(error)
+        connectMysql()
+        res.status(400).json({ error: 'Something went wrong!' })
+    }
+})
+
+app.post("/all-booking", async (req, res) => {
+    try {
+        let json = req.body
+        console.log(json)
+
+        let adminAccount = await getAdminAccount(json.accountId)
+        if (adminAccount == null) {
+            res.status(400).json({ error: 'Bad Request' })
+        } else {
+            let bookingList = await getAllBooking()
+            if (bookingList == null) {
+                res.status(400).json({ error: 'Unable to fetch account' })
+            } else {
+                res.status(200).json(bookingList)
+            }
+        }
+    } catch (error) {
+        console.log(error)
+        connectMysql()
+        res.status(400).json({ error: 'Something went wrong!' })
+    }
+})
+
+app.post("/all-plans", async (req, res) => {
+    try {
+        let plans = await getAllPlans()
+        if (plans == null) {
+            res.status(400).json({ error: 'Unable to fetch account' })
+        } else {
+            res.status(200).json(plans)
+        }
+
+    } catch (error) {
+        console.log(error)
+        connectMysql()
+        res.status(400).json({ error: 'Something went wrong!' })
+    }
+})
+
+
+
+// --------------------------- Plans -----------------------
+
+async function getAllPlans() {
+    let sql = `SELECT * FROM tarif_plan`
+    let que = await query(sql)
+    if (que.length == 0) {
+        return null
+    } else {
+        return que
+    }
+}
+
 
 
 
@@ -225,6 +309,7 @@ async function getAdminAccount(adminId) {
         return que[0]
     }
 }
+
 
 
 
@@ -272,6 +357,16 @@ async function getDriverAccount(driverId) {
         return null
     } else {
         return que[0]
+    }
+}
+
+async function getAllDriverAccount() {
+    let sql = `SELECT * FROM drivers`
+    let que = await query(sql)
+    if (que.length == 0) {
+        return null
+    } else {
+        return que
     }
 }
 
@@ -323,9 +418,29 @@ async function getCustomerAccount(customerId) {
     }
 }
 
+async function getAllCustomerAccount() {
+    let sql = `SELECT * FROM customers`
+    let que = await query(sql)
+    if (que.length == 0) {
+        return null
+    } else {
+        return que
+    }
+}
 
 
 
+// ------------------------------ Booking -----------------------------
+
+async function getAllBooking() {
+    let sql = `SELECT * FROM cab_books`
+    let que = await query(sql)
+    if (que.length == 0) {
+        return null
+    } else {
+        return que
+    }
+}
 
 
 
