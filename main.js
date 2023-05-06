@@ -35,9 +35,22 @@ function connectMysql() {
         isMysqlConnected = true
         console.log("Connected!");
     });
-
-
 }
+
+
+// try to restart mysql if connection is closed
+setInterval(restartMysql, 10000)
+
+function restartMysql(){
+    if(isMysqlConnected){
+        return
+    }
+
+    console.log("Mysql restart")
+    connectMysql()
+}
+
+
 
 
 
@@ -100,8 +113,8 @@ app.post("/sign-up", async (req, res) => {
 
     } catch (error) {
         console.log(error)
-        connectMysql()
         res.status(400).json({ error: 'Something went wrong!' })
+        isMysqlConnected = false
     }
 })
 
@@ -138,9 +151,8 @@ app.post("/sign-in", async (req, res) => {
         }
     } catch (error) {
         console.log(error)
-        connectMysql()
+        isMysqlConnected = false
         res.status(400).json({ error: 'Something went wrong!' })
-
     }
 })
 
@@ -171,7 +183,7 @@ app.post("/account-detail", async (req, res) => {
         }
     } catch (error) {
         console.log(error)
-        connectMysql()
+        isMysqlConnected = false
         res.status(400).json({ error: 'Something went wrong!' })
 
     }
@@ -195,7 +207,7 @@ app.post("/all-customers", async (req, res) => {
         }
     } catch (error) {
         console.log(error)
-        connectMysql()
+        isMysqlConnected = false
         res.status(400).json({ error: 'Something went wrong!' })
     }
 })
@@ -218,7 +230,7 @@ app.post("/all-drivers", async (req, res) => {
         }
     } catch (error) {
         console.log(error)
-        connectMysql()
+        isMysqlConnected = false
         res.status(400).json({ error: 'Something went wrong!' })
     }
 })
@@ -241,7 +253,7 @@ app.post("/all-booking", async (req, res) => {
         }
     } catch (error) {
         console.log(error)
-        connectMysql()
+        isMysqlConnected = false
         res.status(400).json({ error: 'Something went wrong!' })
     }
 })
@@ -257,7 +269,23 @@ app.post("/all-plans", async (req, res) => {
 
     } catch (error) {
         console.log(error)
-        connectMysql()
+        isMysqlConnected = false
+        res.status(400).json({ error: 'Something went wrong!' })
+    }
+})
+
+
+app.post("/driver-all-task", async (req, res) => {
+    try {
+        let json = req.body
+        console.log(json)
+
+        let task = await getDriverAllTask(json.accountId)
+        res.status(200).json(task)
+
+    } catch (error) {
+        console.log(error)
+        isMysqlConnected = false
         res.status(400).json({ error: 'Something went wrong!' })
     }
 })
@@ -368,6 +396,13 @@ async function getAllDriverAccount() {
     } else {
         return que
     }
+}
+
+
+async function getDriverAllTask(driverId){
+    let sql = `SELECT * FROM cab_books WHERE driver_id=${driverId}`
+    let que = await query(sql)
+    return que
 }
 
 
