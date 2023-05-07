@@ -18,18 +18,20 @@ app.use(bp.urlencoded({ extended: true }));
 
 
 // Connecting to mysql
-var con = mysql.createConnection({
-    host: "sql12.freemysqlhosting.net",
-    user: "sql12615940",
-    password: "aNN8PDcfX9",
-    database: "sql12615940"
-});
+var con = null
 
 let isMysqlConnected = false
 
 connectMysql()
 
 function connectMysql() {
+    con = mysql.createConnection({
+        host: "sql12.freemysqlhosting.net",
+        user: "sql12615940",
+        password: "aNN8PDcfX9",
+        database: "sql12615940"
+    });
+
     con.connect(function (err) {
         if (err) throw err;
         isMysqlConnected = true
@@ -39,13 +41,19 @@ function connectMysql() {
 
 
 // try to restart mysql if connection is closed
-setInterval(restartMysql, 10000)
+setInterval(restartMysql, 5000)
 
-function restartMysql(){
-    if(isMysqlConnected){
+function restartMysql() {
+    if (isMysqlConnected) {
         return
     }
-    con.end()
+
+    con.end((err) => {
+        if (err) {
+            console.error('Failed to close MySQL connection:', err);
+        }
+    });
+
     console.log("Mysql restart")
     connectMysql()
 }
@@ -60,8 +68,10 @@ function restartMysql(){
     1) admin - account_id, name, email, password
     2) customers - name, account_id, email, phone, password
     3) drivers - account_id, name, email, phone, password
-    4) tarif_plan - tarif_id, type, rate, seats
-    5) cab_books - book_id, cus_id, driver_id, pick_time, drop_time, pick_loc, drop_loc
+    4) vehicles - vehicle_id, type, rate, seats
+    5) cab_books - book_id, cus_id, driver_id, pick_time, drop_time, pick_loc, drop_loc, book_mode, amount
+
+    book_mode : 0 = single, 1 = group
 
 
 */
@@ -96,9 +106,10 @@ app.post("/sign-up", async (req, res) => {
         let _accountId = 0
         if (json.accountType == "customer") {
             _accountId = await createCustomerAccount(json.name, json.email, json.number, json.password)
-            
+
         } else if (json.accountType == "driver") {
-            _accountId = await createDriverAccount(json.name, json.email, json.number, json.password)
+            let vehicleId = await getUnallocatedVehicle()
+            _accountId = await createDriverAccount(vehicleId, json.name, json.email, json.number, json.password)
 
         } else {
             res.status(400).json({ error: 'Something went wrong!' })
@@ -180,6 +191,41 @@ app.post("/account-detail", async (req, res) => {
             res.status(400).json({ error: 'Account not found' })
         } else {
             res.status(200).json(account)
+        }
+
+    } catch (error) {
+        console.log(error)
+        isMysqlConnected = false
+        res.status(400).json({ error: 'Something went wrong!' })
+
+    }
+})
+
+
+app.post("/update-account-detail", async (req, res) => {
+    try {
+        let json = req.body
+        let result = null
+        console.log(json)
+
+        if (json.accountType == "customer") {
+            result = await updateAccount("customers", json.accountId, json.name, json.password, json.number)
+
+        } else if (json.accountType == "driver") {
+            result = await updateAccount("drivers", json.accountId, json.name, json.password, json.number)
+
+        } else if (json.accountType == "admin") {
+            result = await updateAccount("admin", json.accountId, json.name, json.password, json.number)
+
+        } else {
+            res.status(400).json({ error: 'Something went wrong!' })
+            return
+        }
+
+        if (result == null) {
+            res.status(400).json({ error: 'Account not found' })
+        } else {
+            res.status(200).json({})
         }
 
     } catch (error) {
@@ -292,17 +338,245 @@ app.post("/driver-all-task", async (req, res) => {
 })
 
 
+app.post("/customer-all-booking", async (req, res) => {
+    try {
+        let json = req.body
+        console.log(json)
+
+        let booking = await getCustomerAllBooking(json.accountId)
+        console.log(booking)
+        res.status(200).json(booking)
+
+    } catch (error) {
+        console.log(error)
+        isMysqlConnected = false
+        res.status(400).json({ error: 'Something went wrong!' })
+    }
+})
+
+app.post("/create-update-vehicle", async (req, res) => {
+    try {
+        let json = req.body
+        console.log(json)
+        let result = null
+        if (json.isCreate == true) {
+            result = await createPlan(json.type, json.rate, json.seats)
+        } else {
+            result = await updatePlan(json.vehicleId, json.type, json.rate, json.seats)
+        }
+
+        if (result == null) {
+            if (json.isCreate == true) {
+                res.status(400).json({ error: 'Something went wrong!' })
+            } else {
+                res.status(400).json({ error: 'Something went wrong!' })
+            }
+
+        } else {
+            res.status(200).json({ data: result })
+        }
+
+
+    } catch (error) {
+        console.log(error)
+        isMysqlConnected = false
+        res.status(400).json({ error: 'Something went wrong!' })
+    }
+})
+
+app.post("/delete", async (req, res) => {
+    try {
+        let json = req.body
+        console.log(json)
+        let result = await deleteOperation(json.tableName, json.id)
+
+        if (result == null) {
+            res.status(400).json({ error: 'Unable to delete!' })
+
+        } else {
+            res.status(200).json({ data: result })
+        }
+
+
+    } catch (error) {
+        console.log(error)
+        isMysqlConnected = false
+        res.status(400).json({ error: 'Something went wrong!' })
+    }
+})
+
+app.post("/vehicle-detail", async (req, res) => {
+    try {
+        console.log("sending vehicle names")
+        let result = await getVehicleDetails()
+        res.status(200).json(result)
+
+    } catch (error) {
+        console.log(error)
+        isMysqlConnected = false
+        res.status(400).json({ error: 'Something went wrong!' })
+    }
+})
+
+
+
+
+/*
+{
+  mode: 'search-register',  
+  customerId: 1683438716554,
+  driverId: 0,
+  pickTime: 1683448680000,  
+  dropTime: 1683463080000,  
+  pickLoc: 'dsafsd',
+  dropLoc: 'dsfadsf',
+  vehicleName: 'Bike',
+  amount: 20,
+  bookMode: 'group'
+}
+*/
+
+app.post("/book-cab", async (req, res) => {
+    try {
+        let json = req.body
+        console.log(json)
+
+        if(json.mode == "search-register"){
+
+            
+            res.status(200).json("hello")
+
+        }else if(json.mode == "register"){
+
+        }else if(json.mode == "join"){
+
+        }else{
+            res.status(400).json({ error: 'Bad request!' })
+        }
+        
+    } catch (error) {
+        console.log(error)
+        isMysqlConnected = false
+        res.status(400).json({ error: 'Something went wrong!' })
+    }
+})
+
+
+
+
+
+
+
+
+// this is for test purpose
+app.post("/vehicle-check", async (req, res) => {
+    try {
+        let json = req.body
+        console.log(json)
+        let result = await getUnallocatedVehicle()
+
+        if (result == null) {
+            res.status(400).json({ error: 'Unable to delete!' })
+
+        } else {
+            res.status(200).json({ data: result })
+        }
+
+
+    } catch (error) {
+        console.log(error)
+        isMysqlConnected = false
+        res.status(400).json({ error: 'Something went wrong!' })
+    }
+})
+
+
+
+
+
+
+
+
+// --------------------------- common sql -------------------
+async function updateAccount(tableName, accountId, name, password, number) {
+
+    let sql = `UPDATE ${tableName} SET name='${name}', password='${password}', number='${number}' WHERE account_id=${accountId} LIMIT 1`
+    let que = await query(sql)
+    console.log(que)
+    if (que.affectedRows > 0) {
+        return "success"
+    } else {
+        return null
+    }
+}
+
+async function deleteOperation(tableName, id) {
+    let sql = null
+    if (tableName == "cab_books") {
+        sql = `DELETE FROM ${tableName} WHERE book_id=${id} LIMIT 1`
+    } else if (tableName == "vehicles") {
+        sql = `DELETE FROM ${tableName} WHERE vehicle_id=${id} LIMIT 1`
+    } else {
+        sql = `DELETE FROM ${tableName} WHERE account_id=${id} LIMIT 1`
+    }
+
+    let que = await query(sql)
+    if (que.affectedRows > 0) {
+        return "Deleted successfully"
+    } else {
+        return null
+    }
+}
+
+
 
 // --------------------------- Plans -----------------------
 
 async function getAllPlans() {
-    let sql = `SELECT * FROM tarif_plan`
+    let sql = `SELECT * FROM vehicles`
     let que = await query(sql)
     if (que.length == 0) {
         return null
     } else {
         return que
     }
+}
+
+async function updatePlan(vehicleId, type, rate, seats) {
+    let sql = `UPDATE vehicles SET name='${type}', rate=${rate}, seats=${seats} WHERE vehicle_id=${vehicleId}`
+    let que = await query(sql)
+    if (que.affectedRows > 0) {
+        return "updated successfully"
+    } else {
+        return null
+    }
+}
+
+async function createPlan(type, rate, seats) {
+    let id = generateId()
+    let sql = `INSERT INTO vehicles (vehicle_id, name, rate, seats) VALUES (${id}, '${type}', ${rate}, ${seats})`
+    let que = await query(sql)
+    if (que.affectedRows > 0) {
+        return "Created Successfully"
+    } else {
+        return null
+    }
+}
+
+async function getUnallocatedVehicle(){
+    let sql = `SELECT vehicles.vehicle_id FROM vehicles LEFT JOIN drivers ON vehicles.vehicle_id = drivers.vehicle_id WHERE drivers.account_id IS NULL LIMIT 1`
+    let que = await query(sql)
+    if (que.length == 0) {
+        return 0
+    } else {
+        return que[0].vehicle_id
+    }
+}
+
+async function getVehicleDetails(){
+    let sql = `SELECT DISTINCT name, rate, seats from vehicles`
+    let que = await query(sql)
+    return que
 }
 
 
@@ -344,15 +618,11 @@ async function getAdminAccount(adminId) {
 
 
 
-
-
-
-
 //  -------------------------- Drivers --------------------
 
-async function createDriverAccount(name, email, number, password) {
+async function createDriverAccount(vehicleId, name, email, number, password) {
     let id = generateId()
-    let sql = `INSERT INTO drivers (account_id, name, email, phone, password) VALUES (${id},'${name}','${email}','${number}','${password}')`
+    let sql = `INSERT INTO drivers (account_id, vehicle_id, name, email, number, password) VALUES (${id}, ${vehicleId},'${name}','${email}','${number}','${password}')`
     try {
         await query(sql)
         return id
@@ -400,7 +670,7 @@ async function getAllDriverAccount() {
 }
 
 
-async function getDriverAllTask(driverId){
+async function getDriverAllTask(driverId) {
     let sql = `SELECT * FROM cab_books WHERE driver_id=${driverId}`
     let que = await query(sql)
     return que
@@ -423,7 +693,7 @@ async function isCustomerExist(email) {
 
 async function createCustomerAccount(name, email, number, password) {
     let id = generateId()
-    let sql = `INSERT INTO customers (name, account_id, email, phone, password) VALUES ('${name}',${id},'${email}',${number},'${password}')`
+    let sql = `INSERT INTO customers (name, account_id, email, number, password) VALUES ('${name}',${id},'${email}','${number}','${password}')`
     try {
         await query(sql)
         return id
@@ -477,6 +747,13 @@ async function getAllBooking() {
         return que
     }
 }
+
+async function getCustomerAllBooking(customerId) {
+    let sql = `SELECT * FROM cab_books WHERE cus_id=${customerId}`
+    let que = await query(sql)
+    return que
+}
+
 
 
 
