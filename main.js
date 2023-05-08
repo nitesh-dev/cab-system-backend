@@ -22,6 +22,8 @@ var con = null
 
 let isMysqlConnected = false
 
+
+const addDemoData = false
 connectMysql()
 
 function connectMysql() {
@@ -35,7 +37,10 @@ function connectMysql() {
     con.connect(function (err) {
         if (err) throw err;
         isMysqlConnected = true
+        //deleteAllTables()
+        //createTables()
         console.log("Connected!");
+
     });
 }
 
@@ -59,17 +64,88 @@ function restartMysql() {
 }
 
 
+function createTables() {
+    createAdminTable()
+    createCustomerTable()
+    createDriverTable()
+    createVehicleTable()
+    createCabBookTable()
+}
+
+
+function deleteAllTables() {
+
+    let sql = `DROP TABLE admin`
+    query(sql)
+
+    sql = `DROP TABLE customers`
+    query(sql)
+
+    sql = `DROP TABLE drivers`
+    query(sql)
+
+    sql = `DROP TABLE vehicles`
+    query(sql)
+
+    sql = `DROP TABLE cab_books`
+    query(sql)
+}
+
+async function createAdminTable() {
+    let sql = `CREATE TABLE IF NOT EXISTS admin (account_id DOUBLE, name VARCHAR(40), email VARCHAR(60), password VARCHAR(40), number VARCHAR(15), gender VARCHAR(10), age INTEGER)`
+    await query(sql)
+
+    // create admin account if not exist
+    addAdminAccount("Nitesh Kumar", "nitesh@gmail.com", "123456", "2545689578", "male", 19)
+
+}
+
+async function addAdminAccount(name, email, password, number, gender, age) {
+    let sql = `SELECT * FROM admin`
+    let que = await query(sql)
+    if (que.length == 0) {
+        let accountId = generateId()
+        sql = `INSERT INTO admin (account_id, name, email, password, number, gender, age) VALUES (${accountId}, '${name}', '${email}', '${password}', '${number}', '${gender}', ${age})`
+        await query(sql)
+    }
+}
+
+
+async function createCustomerTable() {
+    let sql = `CREATE TABLE IF NOT EXISTS customers (account_id DOUBLE, name VARCHAR(40), email VARCHAR(60), password VARCHAR(40), number VARCHAR(15), gender VARCHAR(10), age INTEGER, is_premium BOOL)`
+    let que = await query(sql)
+
+    return que
+}
+
+async function createDriverTable() {
+    let sql = `CREATE TABLE IF NOT EXISTS drivers (account_id DOUBLE, booking_id DOUBLE , vehicle_id DOUBLE, name VARCHAR(40), email VARCHAR(60), password VARCHAR(40), number VARCHAR(15), gender VARCHAR(10), age INTEGER, is_busy BOOL)`
+    let que = await query(sql)
+    return que
+}
+
+async function createVehicleTable() {
+    let sql = `CREATE TABLE IF NOT EXISTS vehicles (vehicle_id DOUBLE, name VARCHAR(40), rate FLOAT, seats INT)`
+    let que = await query(sql)
+    return que
+}
+
+async function createCabBookTable() {
+    let sql = `CREATE TABLE IF NOT EXISTS cab_books (book_id DOUBLE, cus_id DOUBLE, driver_id DOUBLE, pick_time DOUBLE, pick_loc VARCHAR(200), drop_loc VARCHAR(200), is_single BOOL, amount INT, is_done BOOL)`
+    let que = await query(sql)
+    return que
+}
 
 
 
 // -------------------------------------------------------
 
 /*        Table details
-    1) admin - account_id, name, email, password
-    2) customers - name, account_id, email, phone, password
-    3) drivers - account_id, name, email, phone, password
-    4) vehicles - vehicle_id, type, rate, seats
-    5) cab_books - book_id, cus_id, driver_id, pick_time, drop_time, pick_loc, drop_loc, book_mode, amount
+    1) admin - account_id, name, email, password, number, gender, age
+    2) customers - account_id, name, email, password, number, gender, age, is_premium
+    3) drivers - account_id, booking_id, vehicle_id, name, email, password, number, gender, age, is_busy
+    4) vehicles - vehicle_id, name, rate, seats
+    5) cab_books - book_id, cus_id, driver_id, pick_time, pick_loc, drop_loc, is_single, amount, is_done
 
     book_mode : 0 = single, 1 = group
 
@@ -105,11 +181,11 @@ app.post("/sign-up", async (req, res) => {
         // create account if not exist
         let _accountId = 0
         if (json.accountType == "customer") {
-            _accountId = await createCustomerAccount(json.name, json.email, json.number, json.password)
+            _accountId = await createCustomerAccount(json.name, json.email, json.number, json.password, json.gender, json.age)
 
         } else if (json.accountType == "driver") {
             let vehicleId = await getUnallocatedVehicle()
-            _accountId = await createDriverAccount(vehicleId, json.name, json.email, json.number, json.password)
+            _accountId = await createDriverAccount(vehicleId, json.name, json.email, json.number, json.password, json.gender, json.age)
 
         } else {
             res.status(400).json({ error: 'Something went wrong!' })
@@ -342,9 +418,7 @@ app.post("/customer-all-booking", async (req, res) => {
     try {
         let json = req.body
         console.log(json)
-
         let booking = await getCustomerAllBooking(json.accountId)
-        console.log(booking)
         res.status(200).json(booking)
 
     } catch (error) {
@@ -419,41 +493,114 @@ app.post("/vehicle-detail", async (req, res) => {
 })
 
 
-
-
-/*
-{
-  mode: 'search-register',  
-  customerId: 1683438716554,
-  driverId: 0,
-  pickTime: 1683448680000,  
-  dropTime: 1683463080000,  
-  pickLoc: 'dsafsd',
-  dropLoc: 'dsfadsf',
-  vehicleName: 'Bike',
-  amount: 20,
-  bookMode: 'group'
-}
-*/
-
-app.post("/book-cab", async (req, res) => {
+app.post("/complete-driver-task", async (req, res) => {
     try {
         let json = req.body
         console.log(json)
+        await completeDriverTask(json.bookingId, json.driverId)
+        res.status(200).json("Updated successfully")
 
-        if(json.mode == "search-register"){
+    } catch (error) {
+        console.log(error)
+        isMysqlConnected = false
+        res.status(400).json({ error: 'Something went wrong!' })
+    }
+})
 
-            
-            res.status(200).json("hello")
+app.post("/book-cab", async (req, res) => {
+    try {
+        let booking = req.body
+        console.log(booking)
 
-        }else if(json.mode == "register"){
+        if (booking.bookMode == "group") {
 
-        }else if(json.mode == "join"){
+            // searching cabs if found return list else create new cap group
+            if (booking.driverId == 0 && booking.bookingId == 0) {
+                let currentTime = new Date()
+                currentTime.setMilliseconds(0)
+                currentTime.setSeconds(0)
 
-        }else{
+                // searching already booked cabs
+                let cabs = await findGroupCab(currentTime.getTime(), booking.pickLoc, booking.dropLoc)
+                let filteredCab = []
+                if (cabs != null) {
+                    for (let index = 0; index < cabs.length; index++) {
+                        const cab = cabs[index];
+                        let isAdded = false
+
+                        for (let index2 = 0; index2 < filteredCab.length; index2++) {
+                            const filCab = filteredCab[index2]
+                            if (filCab.book_id == cab.book_id) {
+                                filCab.seat_res += 1
+                                isAdded = true
+                                break
+                            }
+                        }
+
+                        if (!isAdded) {
+                            filteredCab.push({ book_id: cab.book_id, driver_id: cab.driver_id, vehicle_id: cab.vehicle_id, pick_time: cab.pick_time, name: cab.name, seats: cab.seats, seat_res: 1 })
+                        }
+                    }
+                }
+
+                // removing cabs if seats are full
+                let tempCabs = []
+                filteredCab.forEach(element => {
+                    if (element.seats != element.seat_res) {
+                        tempCabs.push(element)
+                    }
+                });
+
+                if (tempCabs.length != 0) {
+                    res.status(200).json(tempCabs)
+                    return
+                }
+
+                // registering new group cab 
+                let freeDriverId = await findFreeDriver(booking.vehicleName)
+
+                if (freeDriverId == null) {
+                    res.status(400).json({ error: 'All driver are busy' })
+                } else {
+                    let bookResult = await registerNewGroupCab(booking.customerId, freeDriverId, booking.pickTime, booking.pickLoc, booking.dropLoc, booking.amount)
+                    if (bookResult == null) {
+                        res.status(400).json({ error: 'Failed to book cab' })
+                    } else {
+                        res.status(200).json({ bookId: bookResult })
+                    }
+                }
+            } else if (booking.driverId != 0 && booking.bookingId != 0) {
+
+                // joining to existing group
+                let bookResult = await joinToExistingGroup(booking.bookingId, booking.customerId, booking.driverId, booking.pickTime, booking.pickLoc, booking.dropLoc, booking.amount)
+                if (bookResult == null) {
+                    res.status(400).json({ error: 'Failed to book cab' })
+                } else {
+                    res.status(200).json({ bookId: bookResult })
+                }
+
+            } else {
+                res.status(400).json({ error: 'Bad request!' })
+            }
+
+        } else if (booking.bookMode == "single") {
+
+            let freeDriverId = await findFreeDriver(booking.vehicleName)
+            if (freeDriverId == null) {
+                res.status(400).json({ error: 'All driver are busy, try grouping!' })
+            } else {
+                let bookResult = await registerSingleCab(booking.customerId, freeDriverId, booking.pickTime, booking.pickLoc, booking.dropLoc, booking.amount)
+                if (bookResult == null) {
+                    res.status(400).json({ error: 'Failed to book cab' })
+                } else {
+                    res.status(200).json({ bookId: bookResult })
+                }
+            }
+
+        } else {
             res.status(400).json({ error: 'Bad request!' })
         }
-        
+
     } catch (error) {
         console.log(error)
         isMysqlConnected = false
@@ -465,21 +612,37 @@ app.post("/book-cab", async (req, res) => {
 
 
 
-
-
-
 // this is for test purpose
 app.post("/vehicle-check", async (req, res) => {
     try {
-        let json = req.body
-        console.log(json)
-        let result = await getUnallocatedVehicle()
 
-        if (result == null) {
-            res.status(400).json({ error: 'Unable to delete!' })
+        let currentTime = new Date()
+        currentTime.setMilliseconds(0)
+        currentTime.setSeconds(0)
 
-        } else {
-            res.status(200).json({ data: result })
+        let cabs = await findGroupCab(currentTime.getTime(), "India, bihar", "India, patna")
+
+        let filteredCab = []
+        if (cabs != null) {
+            for (let index = 0; index < cabs.length; index++) {
+                const cab = cabs[index];
+                let isAdded = false
+
+                for (let index2 = 0; index2 < filteredCab.length; index2++) {
+                    const filCab = filteredCab[index2]
+                    if (filCab.book_id == cab.book_id) {
+                        filCab.seat_res += 1
+                        isAdded = true
+                        break
+                    }
+                }
+
+                if (!isAdded) {
+                    filteredCab.push({ book_id: cab.book_id, driver_id: cab.driver_id, vehicle_id: cab.vehicle_id, pick_time: cab.pick_time, name: cab.name, seats: cab.seats, seat_res: 1 })
+                }
+            }
+
+            res.status(200).json(filteredCab)
         }
 
 
@@ -530,10 +693,10 @@ async function deleteOperation(tableName, id) {
 
 
 
-// --------------------------- Plans -----------------------
+// --------------------------- Vehicles Plans -----------------------
 
 async function getAllPlans() {
-    let sql = `SELECT * FROM vehicles`
+    let sql = `SELECT * FROM vehicles ORDER BY name`
     let que = await query(sql)
     if (que.length == 0) {
         return null
@@ -563,7 +726,7 @@ async function createPlan(type, rate, seats) {
     }
 }
 
-async function getUnallocatedVehicle(){
+async function getUnallocatedVehicle() {
     let sql = `SELECT vehicles.vehicle_id FROM vehicles LEFT JOIN drivers ON vehicles.vehicle_id = drivers.vehicle_id WHERE drivers.account_id IS NULL LIMIT 1`
     let que = await query(sql)
     if (que.length == 0) {
@@ -573,7 +736,7 @@ async function getUnallocatedVehicle(){
     }
 }
 
-async function getVehicleDetails(){
+async function getVehicleDetails() {
     let sql = `SELECT DISTINCT name, rate, seats from vehicles`
     let que = await query(sql)
     return que
@@ -620,9 +783,9 @@ async function getAdminAccount(adminId) {
 
 //  -------------------------- Drivers --------------------
 
-async function createDriverAccount(vehicleId, name, email, number, password) {
+async function createDriverAccount(vehicleId, name, email, number, password, gender, age) {
     let id = generateId()
-    let sql = `INSERT INTO drivers (account_id, vehicle_id, name, email, number, password) VALUES (${id}, ${vehicleId},'${name}','${email}','${number}','${password}')`
+    let sql = `INSERT INTO drivers (account_id, booking_id, vehicle_id, name, email, number, password, gender, age, is_busy) VALUES (${id}, 0, ${vehicleId},'${name}','${email}','${number}','${password}', '${gender}', ${age}, 0)`
     try {
         await query(sql)
         return id
@@ -676,6 +839,103 @@ async function getDriverAllTask(driverId) {
     return que
 }
 
+async function completeDriverTask(bookingId, driverId) {
+    let sql = `UPDATE drivers SET is_busy = 0 WHERE account_id=${driverId} LIMIT 1`
+    let que = await query(sql)
+    sql = `UPDATE cab_books SET is_done=1 WHERE book_id=${bookingId}`
+    await query(sql)
+    return true
+}
+
+
+//cab_books - book_id, cus_id, driver_id, pick_time, pick_loc, drop_loc, is_single, amount, is_done
+
+async function findFreeDriver(vehicleName) {
+    let sql = `SELECT drivers.account_id FROM drivers LEFT JOIN vehicles ON drivers.vehicle_id = vehicles.vehicle_id WHERE vehicles.name = '${vehicleName}' AND drivers.is_busy = 0 LIMIT 1`
+    let que = await query(sql)
+    if (que.length > 0) {
+        return que[0].account_id
+    } else {
+        return null
+    }
+}
+
+
+// NOTE: call only when driver is free, by calling the findFreeDriver()
+async function registerSingleCab(customerId, driverId, pickTime, pickLoc, dropLoc, amount) {
+
+    let bookingId = generateId()
+    let sql = `INSERT INTO cab_books (book_id, cus_id, driver_id, pick_time, pick_loc, drop_loc, is_single, amount, is_done) VALUES (${bookingId}, ${customerId}, ${driverId}, ${pickTime}, '${pickLoc}', '${dropLoc}', 1, ${amount}, 0)`
+    let que1 = await query(sql)
+
+    if (que1.affectedRows > 0) {
+        sql = `UPDATE drivers SET booking_id = ${bookingId}, is_busy = 1 WHERE account_id = ${driverId} LIMIT 1`
+        let que2 = await query(sql)
+        console.log(que2)
+        if (que2.affectedRows > 0) {
+            return bookingId
+        }
+
+        // delete record, if failed
+        sql = `DELETE FROM cab_books WHERE book_id = ${bookingId}`
+        query(sql)
+    }
+    return null
+}
+
+
+async function findGroupCab(currentTime, pickLoc, dropLoc) {
+    pickLoc = pickLoc.toUpperCase()
+    dropLoc = dropLoc.toUpperCase()
+
+    // WHERE pick_time > ${currentTime} AND UPPER(pick_loc) = '${pickLoc}' AND UPPER(drop_loc) = '${dropLoc}'
+    let sql = `SELECT cab_books.book_id, cab_books.driver_id, drivers.vehicle_id, cab_books.pick_time, vehicles.name, vehicles.seats 
+    FROM 
+    cab_books JOIN drivers ON drivers.account_id = cab_books.driver_id 
+    JOIN vehicles ON drivers.vehicle_id = vehicles.vehicle_id
+    WHERE
+    cab_books.pick_time > ${currentTime} AND UPPER(cab_books.pick_loc) = '${pickLoc}' AND UPPER(cab_books.drop_loc) = '${dropLoc}'`
+    let que = await query(sql)
+    if (que.length > 0) {
+        return que
+    } else {
+        return null
+    }
+
+}
+
+// NOTE: call only when driver is free, by calling the findSingleFreeDriver()
+async function registerNewGroupCab(customerId, driverId, pickTime, pickLoc, dropLoc, amount) {
+    let bookingId = generateId()
+    let sql = `INSERT INTO cab_books (book_id, cus_id, driver_id, pick_time, pick_loc, drop_loc, is_single, amount, is_done) VALUES (${bookingId}, ${customerId}, ${driverId}, ${pickTime}, '${pickLoc}', '${dropLoc}', 0, ${amount}, 0)`
+    let que1 = await query(sql)
+
+    if (que1.affectedRows > 0) {
+        sql = `UPDATE drivers SET booking_id = ${bookingId}, is_busy = 1 WHERE account_id = ${driverId} LIMIT 1`
+        let que2 = await query(sql)
+        console.log(que2)
+        if (que2.affectedRows > 0) {
+            return bookingId
+        }
+
+        // delete record, if failed
+        sql = `DELETE FROM cab_books WHERE book_id = ${bookingId}`
+        query(sql)
+    }
+    return null
+}
+
+async function joinToExistingGroup(bookingId, customerId, driverId, pickTime, pickLoc, dropLoc, amount) {
+    let sql = `INSERT INTO cab_books (book_id, cus_id, driver_id, pick_time, pick_loc, drop_loc, is_single, amount, is_done) VALUES (${bookingId}, ${customerId}, ${driverId}, ${pickTime}, '${pickLoc}', '${dropLoc}', 0, ${amount}, 0)`
+    let que = await query(sql)
+    if (que.affectedRows > 0) {
+
+        return bookingId
+    } else {
+        return null
+    }
+}
+
 
 
 
@@ -691,9 +951,9 @@ async function isCustomerExist(email) {
     return que.length != 0
 }
 
-async function createCustomerAccount(name, email, number, password) {
+async function createCustomerAccount(name, email, number, password, gender, age) {
     let id = generateId()
-    let sql = `INSERT INTO customers (name, account_id, email, number, password) VALUES ('${name}',${id},'${email}','${number}','${password}')`
+    let sql = `INSERT INTO customers (name, account_id, email, number, password, gender, age) VALUES ('${name}',${id},'${email}','${number}','${password}', '${gender}', ${age})`
     try {
         await query(sql)
         return id
@@ -737,6 +997,7 @@ async function getAllCustomerAccount() {
 
 
 // ------------------------------ Booking -----------------------------
+// 5) cab_books - book_id, cus_id, driver_id, pick_time, drop_time, pick_loc, drop_loc, book_mode, amount, is_done
 
 async function getAllBooking() {
     let sql = `SELECT * FROM cab_books`
