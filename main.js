@@ -552,7 +552,7 @@ app.post("/book-cab", async (req, res) => {
                 });
 
                 if (tempCabs.length != 0) {
-                    res.status(200).json(tempCabs)
+                    res.status(200).json({type: "search", data: tempCabs})
                     return
                 }
 
@@ -566,7 +566,7 @@ app.post("/book-cab", async (req, res) => {
                     if (bookResult == null) {
                         res.status(400).json({ error: 'Failed to book cab' })
                     } else {
-                        res.status(200).json({ bookId: bookResult })
+                        res.status(200).json({ type: "booked", data: bookResult })
                     }
                 }
             } else if (booking.driverId != 0 && booking.bookingId != 0) {
@@ -576,7 +576,7 @@ app.post("/book-cab", async (req, res) => {
                 if (bookResult == null) {
                     res.status(400).json({ error: 'Failed to book cab' })
                 } else {
-                    res.status(200).json({ bookId: bookResult })
+                    res.status(200).json({ type: "booked", data: bookResult })
                 }
 
             } else {
@@ -593,7 +593,7 @@ app.post("/book-cab", async (req, res) => {
                 if (bookResult == null) {
                     res.status(400).json({ error: 'Failed to book cab' })
                 } else {
-                    res.status(200).json({ bookId: bookResult })
+                    res.status(200).json({ type: "booked", data: bookResult })
                 }
             }
 
@@ -744,8 +744,6 @@ async function getVehicleDetails() {
 
 
 
-
-
 // ---------------------------- Admins ----------------------
 
 
@@ -775,8 +773,6 @@ async function getAdminAccount(adminId) {
         return que[0]
     }
 }
-
-
 
 
 
@@ -846,7 +842,6 @@ async function completeDriverTask(bookingId, driverId) {
     await query(sql)
     return true
 }
-
 
 //cab_books - book_id, cus_id, driver_id, pick_time, pick_loc, drop_loc, is_single, amount, is_done
 
@@ -935,7 +930,6 @@ async function joinToExistingGroup(bookingId, customerId, driverId, pickTime, pi
         return null
     }
 }
-
 
 
 
