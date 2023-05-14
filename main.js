@@ -3,9 +3,16 @@ import bp from 'body-parser'
 import { generateId } from './utils.js'
 import mysql from 'mysql'
 import cors from 'cors'
+import dotenv from 'dotenv'
+dotenv.config()
+
+const port = process.env.EXPRESS_PORT
+const host = process.env.MYSQL_URL;
+const user = process.env.MYSQL_USER;
+const password = process.env.MYSQL_PASS;
+const database = process.env.MYSQL_DB;
 
 const app = express()
-const port = 8080
 
 app.get('/', (req, res) => {
     res.send('Hello World!')
@@ -28,17 +35,17 @@ connectMysql()
 
 function connectMysql() {
     con = mysql.createConnection({
-        host: "sql12.freemysqlhosting.net",
-        user: "sql12615940",
-        password: "aNN8PDcfX9",
-        database: "sql12615940"
+        host: host,
+        user: user,
+        password: password,
+        database: database
     });
 
     con.connect(function (err) {
         if (err) throw err;
         isMysqlConnected = true
         //deleteAllTables()
-        //createTables()
+        createTables()
         console.log("Connected!");
 
     });
@@ -95,8 +102,13 @@ async function createAdminTable() {
     let sql = `CREATE TABLE IF NOT EXISTS admin (account_id DOUBLE, name VARCHAR(40), email VARCHAR(60), password VARCHAR(40), number VARCHAR(15), gender VARCHAR(10), age INTEGER)`
     await query(sql)
 
-    // create admin account if not exist
-    addAdminAccount("Nitesh Kumar", "nitesh@gmail.com", "123456", "2545689578", "male", 19)
+    let sql2 = `SELECT * FROM admin`
+    let result = await query(sql2)
+
+    if (result.length == 0) {
+        // create admin account if not exist
+        addAdminAccount("Admin", "admin@gmail.com", "1234", "2545689578", "male", 19)
+    }
 
 }
 
@@ -552,7 +564,7 @@ app.post("/book-cab", async (req, res) => {
                 });
 
                 if (tempCabs.length != 0) {
-                    res.status(200).json({type: "search", data: tempCabs})
+                    res.status(200).json({ type: "search", data: tempCabs })
                     return
                 }
 
